@@ -38,6 +38,7 @@ typedef struct {
     void (*merge)(Timestamp *dst, const void *other_data, size_t other_size);
     TSOrder (*compare)(const Timestamp *a, const Timestamp *b);
     size_t (*serialize)(const Timestamp *ts, void *buffer, size_t bufsize);
+    size_t (*serialize_for_dest)(const Timestamp *ts, int dest, void *buffer, size_t bufsize);
     void (*deserialize)(Timestamp *ts, const void *buffer, size_t size);
     void (*to_string)(const Timestamp *ts, char *buf, size_t bufsize);
     Timestamp (*clone)(const Timestamp *ts);
@@ -51,6 +52,7 @@ void ts_increment(Timestamp *ts);
 void ts_merge(Timestamp *dst, const void *other_data, size_t other_size);
 TSOrder ts_compare(const Timestamp *a, const Timestamp *b);
 size_t ts_serialize(const Timestamp *ts, void *buffer, size_t bufsize);
+size_t ts_serialize_for_dest(const Timestamp *ts, int dest, void *buffer, size_t bufsize);
 void ts_deserialize(Timestamp *ts, const void *buffer, size_t size);
 void ts_to_string(const Timestamp *ts, char *buf, size_t bufsize);
 Timestamp ts_clone(const Timestamp *ts);

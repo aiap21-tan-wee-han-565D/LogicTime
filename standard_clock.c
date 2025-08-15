@@ -130,6 +130,7 @@ TimestampOps STANDARD_OPS = {
     .merge = standard_merge,
     .compare = standard_compare,
     .serialize = standard_serialize,
+    .serialize_for_dest = NULL,  // Standard clocks don't need destination-aware serialization
     .deserialize = standard_deserialize,
     .to_string = standard_to_string,
     .clone = standard_clone

@@ -63,6 +63,16 @@ size_t ts_serialize(const Timestamp *ts, void *buffer, size_t bufsize) {
     return get_ops(ts->type)->serialize(ts, buffer, bufsize);
 }
 
+size_t ts_serialize_for_dest(const Timestamp *ts, int dest, void *buffer, size_t bufsize) {
+    TimestampOps *ops = get_ops(ts->type);
+    if (ops->serialize_for_dest) {
+        return ops->serialize_for_dest(ts, dest, buffer, bufsize);
+    } else {
+        // Fallback to regular serialize for clock types that don't support destination-aware serialization
+        return ops->serialize(ts, buffer, bufsize);
+    }
+}
+
 void ts_deserialize(Timestamp *ts, const void *buffer, size_t size) {
     get_ops(ts->type)->deserialize(ts, buffer, size);
 }

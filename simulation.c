@@ -51,7 +51,11 @@ void do_internal(ProcCtx *ctx) {
 
 void do_send(ProcCtx *ctx, int dest, const char *payload) {
     if (dest == ctx->pid) return; // shouldn't happen
-    ts_increment(&ctx->ts); // send event
+    
+    // For differential clocks, don't increment here since serialize_for_dest does it
+    if (ctx->clock_type != CLOCK_DIFFERENTIAL) {
+        ts_increment(&ctx->ts); // send event
+    }
     
     // Prepare message
     Message *m = (Message*)malloc(sizeof(Message));
@@ -59,10 +63,10 @@ void do_send(ProcCtx *ctx, int dest, const char *payload) {
     m->to = dest;
     m->clock_type = ctx->clock_type;
     
-    // Serialize current timestamp
-    m->timestamp_size = ts_serialize(&ctx->ts, NULL, 0); // Get required size
+    // Use destination-aware serialization if available (for differential clocks)
+    m->timestamp_size = ts_serialize_for_dest(&ctx->ts, dest, NULL, 0); // Get required size
     m->timestamp_data = malloc(m->timestamp_size);
-    ts_serialize(&ctx->ts, m->timestamp_data, m->timestamp_size);
+    ts_serialize_for_dest(&ctx->ts, dest, m->timestamp_data, m->timestamp_size);
     
     // Update performance statistics
     update_perf_stats(m->timestamp_size, m->timestamp_size);

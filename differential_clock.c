@@ -13,10 +13,9 @@ Timestamp differential_create(int n, int pid, ClockType type) {
     
     DifferentialClockData *data = malloc(sizeof(DifferentialClockData));
     data->v = (int*)calloc(n, sizeof(int));
-    data->last_sent = (int**)malloc(n * sizeof(int*));
-    for (int i = 0; i < n; i++) {
-        data->last_sent[i] = (int*)calloc(n, sizeof(int));
-    }
+    data->LS = (int*)calloc(n, sizeof(int));  // LS[j] = local_clock when last sent to process j
+    data->LU = (int*)calloc(n, sizeof(int));  // LU[k] = local_clock when entry k was last updated
+    data->local_clock = 0;                    // Initialize local clock
     
     ts.data = data;
     ts.data_size = 0; // Dynamic size based on differences
@@ -29,13 +28,11 @@ void differential_destroy(Timestamp *ts) {
         if (data->v) {
             free(data->v);
         }
-        if (data->last_sent) {
-            for (int i = 0; i < ts->n; i++) {
-                if (data->last_sent[i]) {
-                    free(data->last_sent[i]);
-                }
-            }
-            free(data->last_sent);
+        if (data->LS) {
+            free(data->LS);
+        }
+        if (data->LU) {
+            free(data->LU);
         }
         free(ts->data);
         ts->data = NULL;
@@ -45,16 +42,37 @@ void differential_destroy(Timestamp *ts) {
 void differential_increment(Timestamp *ts) {
     DifferentialClockData *data = (DifferentialClockData*)ts->data;
     data->v[ts->pid] += 1;
+    data->local_clock = data->v[ts->pid];  // Keep local_clock in sync
+    data->LU[ts->pid] = data->local_clock; // Update LU when this process's entry is modified
 }
 
 void differential_merge(Timestamp *dst, const void *other_data, size_t other_size) {
     DifferentialClockData *dst_data = (DifferentialClockData*)dst->data;
-    const int *other_v = (const int*)other_data;
     
-    // This is the full vector from the message, merge it
-    for (int i = 0; i < dst->n; i++) {
-        if (other_v[i] > dst_data->v[i]) {
-            dst_data->v[i] = other_v[i];
+    if (other_size == dst->n * sizeof(int)) {
+        // Full vector format (for compatibility)
+        const int *other_v = (const int*)other_data;
+        for (int i = 0; i < dst->n; i++) {
+            if (other_v[i] > dst_data->v[i]) {
+                dst_data->v[i] = other_v[i];
+                // Update LU for any component that was modified
+                dst_data->LU[i] = dst_data->local_clock;
+            }
+        }
+    } else {
+        // Differential format: pairs of (process_id, value)
+        const int *buf = (const int*)other_data;
+        int pair_count = other_size / (2 * sizeof(int));
+        
+        for (int i = 0; i < pair_count; i++) {
+            int k = buf[i * 2];       // process id
+            int val = buf[i * 2 + 1]; // value
+            
+            if (k >= 0 && k < dst->n && val > dst_data->v[k]) {
+                dst_data->v[k] = val;
+                // Update LU[k] = local_clock for each updated component
+                dst_data->LU[k] = dst_data->local_clock;
+            }
         }
     }
 }
@@ -85,32 +103,37 @@ TSOrder differential_compare(const Timestamp *a, const Timestamp *b) {
 }
 
 // For differential technique, we need a special serialize function that
-// takes destination into account
+// takes destination into account - implements true Singhal-Kshemkalyani algorithm
 size_t differential_serialize_for_dest(const Timestamp *ts, int dest, void *buffer, size_t bufsize) {
-    const DifferentialClockData *data = (const DifferentialClockData*)ts->data;
+    DifferentialClockData *data = (DifferentialClockData*)ts->data;
     
-    // Calculate differences since last send to this destination
-    int diff_count = 0;
-    for (int i = 0; i < ts->n; i++) {
-        if (data->v[i] != data->last_sent[dest][i]) {
-            diff_count++;
+    // First increment local clock (step 1 of SK algorithm)
+    data->v[ts->pid]++;
+    data->local_clock = data->v[ts->pid];
+    data->LU[ts->pid] = data->local_clock;
+    
+    // Calculate which entries to send: {(k, v[k]) | LS[dest] < LU[k] or k = pid}
+    int send_count = 0;
+    for (int k = 0; k < ts->n; k++) {
+        if (data->LS[dest] < data->LU[k] || k == ts->pid) {
+            send_count++;
         }
     }
     
-    // Store as pairs of (process_id, new_value)
-    size_t required = diff_count * 2 * sizeof(int);
+    // Store as pairs of (process_id, value)
+    size_t required = send_count * 2 * sizeof(int);
     
     if (bufsize >= required) {
         int *buf = (int*)buffer;
         int idx = 0;
-        for (int i = 0; i < ts->n; i++) {
-            if (data->v[i] != data->last_sent[dest][i]) {
-                buf[idx++] = i;                // process id
-                buf[idx++] = data->v[i];       // new value
-                // Update last_sent
-                data->last_sent[dest][i] = data->v[i];
+        for (int k = 0; k < ts->n; k++) {
+            if (data->LS[dest] < data->LU[k] || k == ts->pid) {
+                buf[idx++] = k;                // process id
+                buf[idx++] = data->v[k];       // current value
             }
         }
+        // Step 3: Update LS[dest] = local_clock
+        data->LS[dest] = data->local_clock;
     }
     
     return required;
@@ -169,9 +192,9 @@ Timestamp differential_clone(const Timestamp *ts) {
     DifferentialClockData *dst_data = (DifferentialClockData*)out.data;
     
     memcpy(dst_data->v, src_data->v, ts->n * sizeof(int));
-    for (int i = 0; i < ts->n; i++) {
-        memcpy(dst_data->last_sent[i], src_data->last_sent[i], ts->n * sizeof(int));
-    }
+    memcpy(dst_data->LS, src_data->LS, ts->n * sizeof(int));
+    memcpy(dst_data->LU, src_data->LU, ts->n * sizeof(int));
+    dst_data->local_clock = src_data->local_clock;
     
     return out;
 }
@@ -185,6 +208,7 @@ TimestampOps DIFFERENTIAL_OPS = {
     .merge = differential_merge,
     .compare = differential_compare,
     .serialize = differential_serialize,
+    .serialize_for_dest = differential_serialize_for_dest,
     .deserialize = differential_deserialize,
     .to_string = differential_to_string,
     .clone = differential_clone

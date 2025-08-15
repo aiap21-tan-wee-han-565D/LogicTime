@@ -310,6 +310,7 @@ TimestampOps ENCODED_OPS = {
     .merge = encoded_merge,
     .compare = encoded_compare,
     .serialize = encoded_serialize,
+    .serialize_for_dest = NULL,  // Encoded clocks don't need destination-aware serialization
     .deserialize = encoded_deserialize,
     .to_string = encoded_to_string,
     .clone = encoded_clone

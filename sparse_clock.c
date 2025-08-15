@@ -193,6 +193,7 @@ TimestampOps SPARSE_OPS = {
     .merge = sparse_merge,
     .compare = sparse_compare,
     .serialize = sparse_serialize,
+    .serialize_for_dest = NULL,  // Sparse clocks don't need destination-aware serialization
     .deserialize = sparse_deserialize,
     .to_string = sparse_to_string,
     .clone = sparse_clone
