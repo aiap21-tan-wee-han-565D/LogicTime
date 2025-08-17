@@ -18,14 +18,18 @@ BIN_DIR = $(BUILD_DIR)/bin
 TARGET = $(BIN_DIR)/vector_clock
 
 # Source files (with paths)
-SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/timestamp.c $(SRC_DIR)/standard_clock.c $(SRC_DIR)/sparse_clock.c $(SRC_DIR)/differential_clock.c $(SRC_DIR)/encoded_clock.c $(SRC_DIR)/message_queue.c $(SRC_DIR)/simulation.c
+SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/timestamp.c $(SRC_DIR)/standard_clock.c $(SRC_DIR)/sparse_clock.c $(SRC_DIR)/differential_clock.c $(SRC_DIR)/encoded_clock.c $(SRC_DIR)/compressed_clock.c $(SRC_DIR)/message_queue.c $(SRC_DIR)/simulation.c
 
 # Test source files
 TEST_SOURCES = $(TEST_DIR)/test_differential_clock.c $(SRC_DIR)/differential_clock.c
-TEST_DEPS = $(SRC_DIR)/standard_clock.c $(SRC_DIR)/sparse_clock.c $(SRC_DIR)/encoded_clock.c $(SRC_DIR)/timestamp.c
+TEST_DEPS = $(SRC_DIR)/standard_clock.c $(SRC_DIR)/sparse_clock.c $(SRC_DIR)/encoded_clock.c $(SRC_DIR)/compressed_clock.c $(SRC_DIR)/timestamp.c
+
+# Compressed clock test source files
+COMPRESSED_TEST_SOURCES = $(TEST_DIR)/test_compressed_clock.c $(SRC_DIR)/compressed_clock.c
+COMPRESSED_TEST_DEPS = $(SRC_DIR)/standard_clock.c $(SRC_DIR)/sparse_clock.c $(SRC_DIR)/encoded_clock.c $(SRC_DIR)/differential_clock.c $(SRC_DIR)/timestamp.c
 
 # Header files
-HEADERS = $(INCLUDE_DIR)/timestamp.h $(INCLUDE_DIR)/standard_clock.h $(INCLUDE_DIR)/sparse_clock.h $(INCLUDE_DIR)/differential_clock.h $(INCLUDE_DIR)/encoded_clock.h $(INCLUDE_DIR)/message_queue.h $(INCLUDE_DIR)/simulation.h $(INCLUDE_DIR)/config.h
+HEADERS = $(INCLUDE_DIR)/timestamp.h $(INCLUDE_DIR)/standard_clock.h $(INCLUDE_DIR)/sparse_clock.h $(INCLUDE_DIR)/differential_clock.h $(INCLUDE_DIR)/encoded_clock.h $(INCLUDE_DIR)/compressed_clock.h $(INCLUDE_DIR)/message_queue.h $(INCLUDE_DIR)/simulation.h $(INCLUDE_DIR)/config.h
 
 # Object files (in build directory)
 OBJECTS = $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
@@ -37,6 +41,14 @@ TEST_DIR_OBJS = $(filter $(TEST_DIR)/%.c,$(TEST_SOURCES))
 TEST_DIR_OBJS := $(TEST_DIR_OBJS:$(TEST_DIR)/%.c=$(OBJ_DIR)/%.o)
 TEST_DEP_OBJS = $(TEST_DEPS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 TEST_OBJECTS = $(TEST_SRC_OBJS) $(TEST_DIR_OBJS) $(TEST_DEP_OBJS)
+
+# Compressed test object files
+COMPRESSED_TEST_SRC_OBJS = $(filter $(SRC_DIR)/%.c,$(COMPRESSED_TEST_SOURCES))
+COMPRESSED_TEST_SRC_OBJS := $(COMPRESSED_TEST_SRC_OBJS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
+COMPRESSED_TEST_DIR_OBJS = $(filter $(TEST_DIR)/%.c,$(COMPRESSED_TEST_SOURCES))
+COMPRESSED_TEST_DIR_OBJS := $(COMPRESSED_TEST_DIR_OBJS:$(TEST_DIR)/%.c=$(OBJ_DIR)/%.o)
+COMPRESSED_TEST_DEP_OBJS = $(COMPRESSED_TEST_DEPS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
+COMPRESSED_TEST_OBJECTS = $(COMPRESSED_TEST_SRC_OBJS) $(COMPRESSED_TEST_DIR_OBJS) $(COMPRESSED_TEST_DEP_OBJS)
 
 # Default target
 all: $(TARGET)
@@ -74,6 +86,15 @@ test-differential: $(BIN_DIR)/test_differential_clock
 	@echo "Running Differential Clock Unit Tests:"
 	$(BIN_DIR)/test_differential_clock
 
+# Build test executable for compressed clock
+$(BIN_DIR)/test_compressed_clock: $(COMPRESSED_TEST_OBJECTS) | $(BIN_DIR)
+	$(CC) $(COMPRESSED_TEST_OBJECTS) -o $@ $(LDFLAGS)
+
+# Run compressed clock unit tests
+test-compressed: $(BIN_DIR)/test_compressed_clock
+	@echo "Running Compressed Clock Unit Tests:"
+	$(BIN_DIR)/test_compressed_clock
+
 # Run tests with different clock types
 test: $(TARGET)
 	@echo "Testing Standard Vector Clocks:"
@@ -84,9 +105,11 @@ test: $(TARGET)
 	$(TARGET) 3 5 2
 	@echo "\nTesting Encoded Vector Clocks:"
 	$(TARGET) 3 5 3
+	@echo "\nTesting Compressed Vector Clocks:"
+	$(TARGET) 3 5 4
 
 # Run all tests (integration + unit)
-test-all: test test-differential
+test-all: test test-differential test-compressed
 
 # Show help
 help:
@@ -96,6 +119,7 @@ help:
 	@echo "  debug            - Build with debugging symbols"
 	@echo "  test             - Run integration tests with all clock types"
 	@echo "  test-differential - Run differential clock unit tests"
+	@echo "  test-compressed  - Run compressed clock unit tests"
 	@echo "  test-all         - Run both integration and unit tests"
 	@echo "  help             - Show this help message"
 	@echo ""
@@ -106,4 +130,4 @@ help:
 	@echo "  build/           - Build artifacts (auto-generated)"
 
 # Declare phony targets
-.PHONY: all clean debug test test-differential test-all help
+.PHONY: all clean debug test test-differential test-compressed test-all help

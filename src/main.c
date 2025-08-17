@@ -16,7 +16,7 @@ void print_usage(const char* prog_name) {
     printf("  steps_per_process : Number of steps per process (default: %d)\n", DEFAULT_STEPS);
     printf("  clock_type       : Clock implementation type (default: 0)\n\n");
     printf("Clock Types:\n");
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         printf("  %d - %s: %s\n", i, clock_type_names[i], clock_type_descriptions[i]);
     }
     printf("\nExample: %s 5 20 1    # 5 processes, 20 steps each, sparse clocks\n", prog_name);
@@ -65,8 +65,8 @@ int main(int argc, char **argv) {
     if (argc >= 3) steps = atoi(argv[2]);
     if (argc >= 4) {
         clock_type = (ClockType)atoi(argv[3]);
-        if (clock_type < 0 || clock_type > 3) {
-            fprintf(stderr, "Invalid clock type. Use 0-3.\n");
+        if (clock_type < 0 || clock_type > 4) {
+            fprintf(stderr, "Invalid clock type. Use 0-4.\n");
             print_usage(argv[0]);
             return 1;
         }

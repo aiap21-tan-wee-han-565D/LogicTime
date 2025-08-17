@@ -9,7 +9,8 @@ typedef enum {
     CLOCK_STANDARD = 0,   // Original full vector clocks
     CLOCK_SPARSE = 1,     // Compressed/sparse representation
     CLOCK_DIFFERENTIAL = 2, // Singhal-Kshemkalyani technique
-    CLOCK_ENCODED = 3     // Prime number encoding
+    CLOCK_ENCODED = 3,    // Prime number encoding
+    CLOCK_COMPRESSED = 4  // True delta compression
 } ClockType;
 
 typedef enum {

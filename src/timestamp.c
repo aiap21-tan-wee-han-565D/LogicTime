@@ -5,18 +5,20 @@
 #include "sparse_clock.h"
 #include "differential_clock.h"
 #include "encoded_clock.h"
+#include "compressed_clock.h"
 
 /* ---------- Clock Type Information ---------- */
 
 const char* clock_type_names[] = {
-    "Standard", "Sparse", "Differential", "Encoded"
+    "Standard", "Sparse", "Differential", "Encoded", "Compressed"
 };
 
 const char* clock_type_descriptions[] = {
     "Full vector clocks (baseline)",
     "Sparse representation (only non-zero entries)",
     "Differential technique (Singhal-Kshemkalyani)",
-    "Prime number encoding (single integer)"
+    "Prime number encoding (single integer)",
+    "True delta compression (only send changes per receiver)"
 };
 
 /* ---------- Operations Dispatch ---------- */
@@ -27,6 +29,7 @@ static TimestampOps* get_ops(ClockType type) {
         case CLOCK_SPARSE: return &SPARSE_OPS;
         case CLOCK_DIFFERENTIAL: return &DIFFERENTIAL_OPS;
         case CLOCK_ENCODED: return &ENCODED_OPS;
+        case CLOCK_COMPRESSED: return &COMPRESSED_OPS;
         default:
             fprintf(stderr, "Unknown clock type: %d\n", type);
             exit(1);

@@ -124,7 +124,7 @@ void* worker(void *arg) {
             int dest;
             do { dest = rand_in_range(&seed, 0, ctx->n - 1); } while (dest == ctx->pid);
             char payload[PAYLOAD_SIZE];
-            snprintf(payload, sizeof(payload), "hello_%d_from_P%d", step, ctx->pid);
+            snprintf(payload, sizeof(payload), "step %d_:hello_to_%d_from_P%d", step, dest, ctx->pid);
             do_send(ctx, dest, payload);
         } else {
             // TRY RECEIVE; if nothing, do internal
