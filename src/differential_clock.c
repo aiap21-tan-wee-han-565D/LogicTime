@@ -13,9 +13,8 @@ Timestamp differential_create(int n, int pid, ClockType type) {
     
     DifferentialClockData *data = malloc(sizeof(DifferentialClockData));
     data->v = (int*)calloc(n, sizeof(int));
-    data->LS = (int*)calloc(n, sizeof(int));  // LS[j] = local_clock when last sent to process j
-    data->LU = (int*)calloc(n, sizeof(int));  // LU[k] = local_clock when entry k was last updated
-    data->local_clock = 0;                    // Initialize local clock
+    data->LS = (int*)calloc(n, sizeof(int));  // LS[j] = v[pid] when last sent to process j
+    data->LU = (int*)calloc(n, sizeof(int));  // LU[k] = v[pid] when entry k was last updated
     
     ts.data = data;
     ts.data_size = 0; // Dynamic size based on differences
@@ -42,17 +41,11 @@ void differential_destroy(Timestamp *ts) {
 void differential_increment(Timestamp *ts) {
     DifferentialClockData *data = (DifferentialClockData*)ts->data;
     data->v[ts->pid] += 1;
-    data->local_clock = data->v[ts->pid];  // Keep local_clock in sync
-    data->LU[ts->pid] = data->local_clock; // Update LU when this process's entry is modified
+    data->LU[ts->pid] = data->v[ts->pid]; // Update LU when this process's entry is modified
 }
 
 void differential_merge(Timestamp *dst, const void *other_data, size_t other_size) {
     DifferentialClockData *dst_data = (DifferentialClockData*)dst->data;
-    
-    // Increment local clock first (this process's logical time advances)
-    dst_data->v[dst->pid]++;
-    dst_data->local_clock = dst_data->v[dst->pid];
-    dst_data->LU[dst->pid] = dst_data->local_clock;
     
     if (other_size == dst->n * sizeof(int)) {
         // Full vector format (for compatibility)
@@ -60,8 +53,8 @@ void differential_merge(Timestamp *dst, const void *other_data, size_t other_siz
         for (int i = 0; i < dst->n; i++) {
             if (other_v[i] > dst_data->v[i]) {
                 dst_data->v[i] = other_v[i];
-                // Update LU for any component that was modified during merge
-                dst_data->LU[i] = dst_data->local_clock;
+                // Update LU[i] = vt[j] + 1 (next logical time when entry i will be updated)
+                dst_data->LU[i] = dst_data->v[dst->pid] + 1;
             }
         }
     } else {
@@ -75,11 +68,15 @@ void differential_merge(Timestamp *dst, const void *other_data, size_t other_siz
             
             if (k >= 0 && k < dst->n && val > dst_data->v[k]) {
                 dst_data->v[k] = val;
-                // Update LU[k] = local_clock for each updated component
-                dst_data->LU[k] = dst_data->local_clock;
+                // Update LU[k] = vt[j] + 1 (next logical time when entry k will be updated)
+                dst_data->LU[k] = dst_data->v[dst->pid] + 1;
             }
         }
     }
+    
+    // Increment own vector clock last (the receive event)
+    dst_data->v[dst->pid]++;
+    dst_data->LU[dst->pid] = dst_data->v[dst->pid];
 }
 
 TSOrder differential_compare(const Timestamp *a, const Timestamp *b) {
@@ -132,8 +129,8 @@ size_t differential_serialize_for_dest(const Timestamp *ts, int dest, void *buff
                 buf[idx++] = data->v[k];       // current value
             }
         }
-        // Update LS[dest] = local_clock after successful serialization
-        data->LS[dest] = data->local_clock;
+        // Update LS[dest] = current vector time after successful serialization
+        data->LS[dest] = data->v[ts->pid];
     }
     
     return required;
@@ -159,8 +156,8 @@ void differential_deserialize(Timestamp *ts, const void *buffer, size_t size) {
         for (int i = 0; i < ts->n; i++) {
             if (full_v[i] > data->v[i]) {
                 data->v[i] = full_v[i];
-                // Update LU for changed components
-                data->LU[i] = data->local_clock;
+                // Update LU for changed components (next logical time)
+                data->LU[i] = data->v[ts->pid] + 1;
             }
         }
     } else {
@@ -169,13 +166,13 @@ void differential_deserialize(Timestamp *ts, const void *buffer, size_t size) {
         int pair_count = size / (2 * sizeof(int));
         
         for (int i = 0; i < pair_count; i++) {
-            int pid = buf[i * 2];
-            int value = buf[i * 2 + 1];
+            int pid = buf[i * 2]; // Extracts pid from even index 
+            int value = buf[i * 2 + 1]; // Extracts value from odd index
             if (pid >= 0 && pid < ts->n) {
                 if (value > data->v[pid]) {
                     data->v[pid] = value;
-                    // Update LU when component is updated
-                    data->LU[pid] = data->local_clock;
+                    // Update LU when component is updated (next logical time)
+                    data->LU[pid] = data->v[ts->pid] + 1;
                 }
             }
         }
@@ -203,7 +200,6 @@ Timestamp differential_clone(const Timestamp *ts) {
     memcpy(dst_data->v, src_data->v, ts->n * sizeof(int));
     memcpy(dst_data->LS, src_data->LS, ts->n * sizeof(int));
     memcpy(dst_data->LU, src_data->LU, ts->n * sizeof(int));
-    dst_data->local_clock = src_data->local_clock;
     
     return out;
 }

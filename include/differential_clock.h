@@ -8,9 +8,8 @@
 // Differential clock data (Singhal-Kshemkalyani technique)
 typedef struct {
     int *v;                    // current vector clock
-    int *LS;                   // Last Sent: LS[j] = local_clock when last sent to process j
-    int *LU;                   // Last Update: LU[k] = local_clock when entry k was last updated
-    int local_clock;           // current value of v[pid] for this process
+    int *LS;                   // Last Sent: LS[j] = v[pid] when last sent to process j
+    int *LU;                   // Last Update: LU[k] = v[pid] when entry k was last updated
 } DifferentialClockData;
 
 /* ---------- Differential Vector Clock Operations ---------- */
