@@ -10,6 +10,7 @@ typedef struct {
     int pid;
     int n;
     int steps;
+    int current_step;   // current step number in simulation
     Timestamp ts;       // timestamp using configured clock type
     MsgQueue *queues;   // array of size n (one per process)
     ClockType clock_type; // clock type for this simulation
@@ -29,7 +30,7 @@ extern PerfStats perf_stats;
 /* ---------- Simulation Functions ---------- */
 
 void update_perf_stats(size_t message_size, size_t clock_size);
-void print_event_header(int pid, const Timestamp *ts, const char *etype);
+void print_event_header(int pid, int step, const Timestamp *ts, const char *etype);
 void* worker(void *arg);
 
 /* ---------- Event Handlers ---------- */

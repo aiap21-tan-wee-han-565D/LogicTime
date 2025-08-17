@@ -60,8 +60,6 @@ void compressed_increment(Timestamp *ts) {
 void compressed_merge(Timestamp *dst, const void *other_data, size_t other_size) {
     CompressedClockData *dst_data = (CompressedClockData*)dst->data;
     
-    // Note: Clock increment is handled by simulation framework after merge
-    
     if (other_size == dst->n * sizeof(int)) {
         // Full vector format (for compatibility with other clock types)
         const int *other_vt = (const int*)other_data;
@@ -89,6 +87,9 @@ void compressed_merge(Timestamp *dst, const void *other_data, size_t other_size)
             }
         }
     }
+    
+    // Increment local clock after merge (handles increment internally like differential clocks)
+    dst_data->vt[dst->pid]++;
 }
 
 TSOrder compressed_compare(const Timestamp *a, const Timestamp *b) {
@@ -129,26 +130,38 @@ size_t compressed_serialize_for_dest(const Timestamp *ts, int dest, void *buffer
         }
     }
     
-    // Step 2: Calculate required size [count, (index1, value1), (index2, value2), ...]
-    size_t required = (1 + 2 * diff_count) * sizeof(int);
+    // Step 2: Calculate size for compressed vs full format
+    size_t compressed_size = (1 + 2 * diff_count) * sizeof(int);
+    size_t full_size = data->n * sizeof(int);
     
-    if (bufsize >= required) {
-        int *buf = (int*)buffer;
-        buf[0] = diff_count;  // Number of changed entries
-        
-        int buf_idx = 1;
-        for (int k = 0; k < data->n; k++) {
-            if (data->tau[dest][k] != data->vt[k]) {
-                buf[buf_idx++] = k;                // index
-                buf[buf_idx++] = data->vt[k];      // current value
+    // Use compression only if it's actually smaller or equal
+    if (compressed_size <= full_size && diff_count > 0) {
+        // Use compressed format
+        if (bufsize >= compressed_size) {
+            int *buf = (int*)buffer;
+            buf[0] = diff_count;  // Number of changed entries
+            
+            int buf_idx = 1;
+            for (int k = 0; k < data->n; k++) {
+                if (data->tau[dest][k] != data->vt[k]) {
+                    buf[buf_idx++] = k;                // index
+                    buf[buf_idx++] = data->vt[k];      // current value
+                }
             }
+            
+            // Step 3: Remember what you sent - set tau[dest] := vt
+            memcpy(data->tau[dest], data->vt, data->n * sizeof(int));
         }
-        
-        // Step 3: Remember what you sent - set tau[dest] := vt
-        memcpy(data->tau[dest], data->vt, data->n * sizeof(int));
+        return compressed_size;
+    } else {
+        // Use full format (more efficient)
+        if (bufsize >= full_size) {
+            memcpy(buffer, data->vt, full_size);
+            // Step 3: Remember what you sent - set tau[dest] := vt
+            memcpy(data->tau[dest], data->vt, data->n * sizeof(int));
+        }
+        return full_size;
     }
-    
-    return required;
 }
 
 size_t compressed_serialize(const Timestamp *ts, void *buffer, size_t bufsize) {

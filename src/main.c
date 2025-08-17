@@ -88,6 +88,7 @@ int main(int argc, char **argv) {
         procs[i].pid = i;
         procs[i].n = n;
         procs[i].steps = steps;
+        procs[i].current_step = 0;  // Initialize current step
         procs[i].clock_type = clock_type;
         procs[i].ts = ts_create(n, i, clock_type);
         procs[i].queues = queues;

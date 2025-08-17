@@ -35,22 +35,29 @@ int rand_in_range(unsigned int *seed, int lo, int hi_inclusive) {
     return lo + (r % (hi_inclusive - lo + 1));
 }
 
-void print_event_header(int pid, const Timestamp *ts, const char *etype) {
+void print_event_header(int pid, int step, const Timestamp *ts, const char *etype) {
     char buf[STRING_BUFFER_SIZE];
     ts_to_string(ts, buf, sizeof(buf));
-    printf("P%d %s | TS=%s | ", pid, etype, buf);
+    printf("P%d Step%d %s | TS=%s | ", pid, step, etype, buf);
 }
 
 /* ---------- Event Handlers ---------- */
 
 void do_internal(ProcCtx *ctx) {
-    ts_increment(&ctx->ts);
-    print_event_header(ctx->pid, &ctx->ts, "INTERNAL");
+    print_event_header(ctx->pid, ctx->current_step, &ctx->ts, "INTERNAL(BEFORE)");
     printf("local computation\n");
+    
+    ts_increment(&ctx->ts);
+    
+    print_event_header(ctx->pid, ctx->current_step, &ctx->ts, "INTERNAL(AFTER) ");
+    printf("clock incremented\n");
 }
 
 void do_send(ProcCtx *ctx, int dest, const char *payload) {
     if (dest == ctx->pid) return; // shouldn't happen
+    
+    print_event_header(ctx->pid, ctx->current_step, &ctx->ts, "SEND(BEFORE)   ");
+    printf("to P%d, payload=\"%s\"\n", dest, payload);
     
     // Always increment timestamp for send events (step 1 of SK algorithm)
     ts_increment(&ctx->ts);
@@ -61,18 +68,25 @@ void do_send(ProcCtx *ctx, int dest, const char *payload) {
     m->to = dest;
     m->clock_type = ctx->clock_type;
     
-    // Use destination-aware serialization if available (for differential clocks)
-    m->timestamp_size = ts_serialize_for_dest(&ctx->ts, dest, NULL, 0); // Get required size
-    m->timestamp_data = malloc(m->timestamp_size);
-    ts_serialize_for_dest(&ctx->ts, dest, m->timestamp_data, m->timestamp_size);
+    // Use destination-aware serialization for differential and compressed clocks
+    if (ctx->clock_type == CLOCK_DIFFERENTIAL || ctx->clock_type == CLOCK_COMPRESSED) {
+        m->timestamp_size = ts_serialize_for_dest(&ctx->ts, dest, NULL, 0); // Get required size
+        m->timestamp_data = malloc(m->timestamp_size);
+        ts_serialize_for_dest(&ctx->ts, dest, m->timestamp_data, m->timestamp_size);
+    } else {
+        // Use standard serialization for other clock types
+        m->timestamp_size = ts_serialize(&ctx->ts, NULL, 0); // Get required size
+        m->timestamp_data = malloc(m->timestamp_size);
+        ts_serialize(&ctx->ts, m->timestamp_data, m->timestamp_size);
+    }
     
     // Update performance statistics
     update_perf_stats(sizeof(Message) + m->timestamp_size, m->timestamp_size);
     
     snprintf(m->payload, sizeof(m->payload), "%s", payload);
     mq_push(&ctx->queues[dest], m);
-    print_event_header(ctx->pid, &ctx->ts, "SEND    ");
-    printf("to P%d, payload=\"%s\"\n", dest, m->payload);
+    print_event_header(ctx->pid, ctx->current_step, &ctx->ts, "SEND(AFTER)    ");
+    printf("clock incremented and message sent\n");
 }
 
 int do_try_recv(ProcCtx *ctx) {
@@ -80,7 +94,7 @@ int do_try_recv(ProcCtx *ctx) {
     if (!m) return 0;
 
     // Display the receive event before merging
-    print_event_header(ctx->pid, &ctx->ts, "RECV(BEFORE)");
+    print_event_header(ctx->pid, ctx->current_step, &ctx->ts, "RECV(BEFORE)");
     
     // Create temporary timestamp for message display
     Timestamp msg_ts = ts_create(ctx->n, m->from, m->clock_type);
@@ -90,14 +104,14 @@ int do_try_recv(ProcCtx *ctx) {
     ts_to_string(&msg_ts, buf, sizeof(buf));
     printf("from P%d: payload=\"%s\", msgTS=%s\n", m->from, m->payload, buf);
 
-    // For differential clocks, merge handles the increment internally
+    // For differential and compressed clocks, merge handles the increment internally
     // For other clocks, merge then increment separately
     ts_merge(&ctx->ts, m->timestamp_data, m->timestamp_size);
-    if (ctx->clock_type != CLOCK_DIFFERENTIAL) {
+    if (ctx->clock_type != CLOCK_DIFFERENTIAL && ctx->clock_type != CLOCK_COMPRESSED) {
         ts_increment(&ctx->ts);
     }
 
-    print_event_header(ctx->pid, &ctx->ts, "RECV(AFTER) ");
+    print_event_header(ctx->pid, ctx->current_step, &ctx->ts, "RECV(AFTER) ");
     printf("merged with sender and incremented\n");
 
     ts_destroy(&msg_ts);
@@ -115,6 +129,7 @@ void* worker(void *arg) {
     unsigned int seed = (unsigned int)time(NULL) ^ (ctx->pid * 2654435761u);
 
     for (int step = 0; step < ctx->steps; step++) {
+        ctx->current_step = step;  // Set current step in context
         int choice = rand_in_range(&seed, 0, 99);
 
         if (choice < PROB_INTERNAL) {
@@ -124,7 +139,7 @@ void* worker(void *arg) {
             int dest;
             do { dest = rand_in_range(&seed, 0, ctx->n - 1); } while (dest == ctx->pid);
             char payload[PAYLOAD_SIZE];
-            snprintf(payload, sizeof(payload), "step %d_:hello_to_%d_from_P%d", step, dest, ctx->pid);
+            snprintf(payload, sizeof(payload), "step %d: hello_from_P%d_to_P%d", step, ctx->pid, dest);
             do_send(ctx, dest, payload);
         } else {
             // TRY RECEIVE; if nothing, do internal
