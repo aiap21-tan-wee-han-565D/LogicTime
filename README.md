@@ -1,6 +1,6 @@
 # Configurable Vector Clock System
 
-A modular C implementation supporting multiple vector clock algorithms for distributed system simulation.
+C implementation of multiple vector clock algorithms for distributed system simulation.
 
 ## Features
 
