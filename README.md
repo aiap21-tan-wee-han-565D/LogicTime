@@ -16,7 +16,7 @@ C implementation of multiple vector clock algorithms for distributed system simu
 |------|-------------|-------------|----------|
 | **Standard** | Full vector clocks (baseline) | 1.0x | Traditional implementation |
 | **Sparse** | Only non-zero entries | Variable | Large sparse networks |
-| **Differential** | Singhal-Kshemkalyani technique | 1.50x smaller | Frequent communication |
+| **Differential** | Singhal-Kshemkalyani technique | ~1.5x smaller | Frequent communication |
 | **Encoded** | Prime number encoding | Variable | Small counter values |
 | **Compressed** | True delta compression | Variable | Receiver-specific optimization |
 
@@ -103,25 +103,21 @@ P0 Step2 RECV(BEFORE)     | TS=D[1,0] | from P1: payload="step 1: hello_from_P1_
 P0 Step2 RECV(AFTER)      | TS=D[2,2] | merged with sender and incremented
 ```
 
-## Architecture
-
-The system uses an abstract `Timestamp` interface with pluggable `TimestampOps` function pointers, allowing runtime selection of clock implementations. Each clock type provides:
-
-- `create/destroy` - Lifecycle management
-- `increment` - Local event handling  
-- `merge` - Message reception and vector merging
-- `compare` - Causal relationship determination
-- `serialize/deserialize` - Network communication
-- `to_string` - Display formatting
-- `clone` - Deep copying
+The `serialize_for_dest` function enables advanced compression techniques like the Singhal-Kshemkalyani differential algorithm, where only relevant vector components are transmitted based on communication history.
 
 ## Performance Analysis
 
-The system provides detailed performance statistics including:
-- Total messages sent and bytes transferred
-- Average and maximum timestamp sizes
-- Compression ratios compared to standard vector clocks
-- Memory usage analysis
+The system provides comprehensive performance statistics including:
+- **Message Statistics**: Total messages sent and bytes transferred
+- **Size Analysis**: Average and maximum timestamp sizes across clock types
+- **Compression Ratios**: Real-time comparison against standard vector clocks baseline
+- **Memory Usage**: Dynamic memory allocation tracking for each implementation
+
+### Measured Performance Results
+- **Differential Clocks**: Achieve ~1.5x compression for 3-process simulations
+- **Compressed Clocks**: Variable compression based on vector similarity and receiver context
+- **Sparse Clocks**: Effective for networks with infrequent inter-process communication
+- **Encoded Clocks**: Optimal for scenarios with small logical clock values
 
 ## Adding New Clock Types
 
@@ -135,4 +131,3 @@ The system provides detailed performance statistics including:
 
 - Lamport, L. "Time, Clocks, and the Ordering of Events in a Distributed System"
 - Singhal, M. and Kshemkalyani, A. "An Efficient Implementation of Vector Clocks"
-- Prime number encoding for vector timestamp compression techniques
