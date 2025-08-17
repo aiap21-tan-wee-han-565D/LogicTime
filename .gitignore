@@ -1,4 +1,10 @@
+# Build artifacts
+build/
+
+# Executables  
 vector_clock
+test_differential_clock
+
 # Prerequisites
 *.d
 
@@ -54,6 +60,23 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Coverage files
+*.gcda
+*.gcno
+*.gcov
+
 CLAUDE.md
 .claude/
 *.claude

@@ -52,10 +52,8 @@ void do_internal(ProcCtx *ctx) {
 void do_send(ProcCtx *ctx, int dest, const char *payload) {
     if (dest == ctx->pid) return; // shouldn't happen
     
-    // For differential clocks, don't increment here since serialize_for_dest does it
-    if (ctx->clock_type != CLOCK_DIFFERENTIAL) {
-        ts_increment(&ctx->ts); // send event
-    }
+    // Always increment timestamp for send events (step 1 of SK algorithm)
+    ts_increment(&ctx->ts);
     
     // Prepare message
     Message *m = (Message*)malloc(sizeof(Message));
@@ -69,7 +67,7 @@ void do_send(ProcCtx *ctx, int dest, const char *payload) {
     ts_serialize_for_dest(&ctx->ts, dest, m->timestamp_data, m->timestamp_size);
     
     // Update performance statistics
-    update_perf_stats(m->timestamp_size, m->timestamp_size);
+    update_perf_stats(sizeof(Message) + m->timestamp_size, m->timestamp_size);
     
     snprintf(m->payload, sizeof(m->payload), "%s", payload);
     mq_push(&ctx->queues[dest], m);
@@ -81,7 +79,7 @@ int do_try_recv(ProcCtx *ctx) {
     Message *m = mq_try_pop(&ctx->queues[ctx->pid]);
     if (!m) return 0;
 
-    // Merge, then increment own entry for the receive event
+    // Display the receive event before merging
     print_event_header(ctx->pid, &ctx->ts, "RECV(BEFORE)");
     
     // Create temporary timestamp for message display
@@ -92,8 +90,12 @@ int do_try_recv(ProcCtx *ctx) {
     ts_to_string(&msg_ts, buf, sizeof(buf));
     printf("from P%d: payload=\"%s\", msgTS=%s\n", m->from, m->payload, buf);
 
+    // For differential clocks, merge handles the increment internally
+    // For other clocks, merge then increment separately
     ts_merge(&ctx->ts, m->timestamp_data, m->timestamp_size);
-    ts_increment(&ctx->ts);
+    if (ctx->clock_type != CLOCK_DIFFERENTIAL) {
+        ts_increment(&ctx->ts);
+    }
 
     print_event_header(ctx->pid, &ctx->ts, "RECV(AFTER) ");
     printf("merged with sender and incremented\n");

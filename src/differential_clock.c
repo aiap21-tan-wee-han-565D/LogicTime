@@ -49,13 +49,18 @@ void differential_increment(Timestamp *ts) {
 void differential_merge(Timestamp *dst, const void *other_data, size_t other_size) {
     DifferentialClockData *dst_data = (DifferentialClockData*)dst->data;
     
+    // Increment local clock first (this process's logical time advances)
+    dst_data->v[dst->pid]++;
+    dst_data->local_clock = dst_data->v[dst->pid];
+    dst_data->LU[dst->pid] = dst_data->local_clock;
+    
     if (other_size == dst->n * sizeof(int)) {
         // Full vector format (for compatibility)
         const int *other_v = (const int*)other_data;
         for (int i = 0; i < dst->n; i++) {
             if (other_v[i] > dst_data->v[i]) {
                 dst_data->v[i] = other_v[i];
-                // Update LU for any component that was modified
+                // Update LU for any component that was modified during merge
                 dst_data->LU[i] = dst_data->local_clock;
             }
         }
@@ -107,11 +112,6 @@ TSOrder differential_compare(const Timestamp *a, const Timestamp *b) {
 size_t differential_serialize_for_dest(const Timestamp *ts, int dest, void *buffer, size_t bufsize) {
     DifferentialClockData *data = (DifferentialClockData*)ts->data;
     
-    // First increment local clock (step 1 of SK algorithm)
-    data->v[ts->pid]++;
-    data->local_clock = data->v[ts->pid];
-    data->LU[ts->pid] = data->local_clock;
-    
     // Calculate which entries to send: {(k, v[k]) | LS[dest] < LU[k] or k = pid}
     int send_count = 0;
     for (int k = 0; k < ts->n; k++) {
@@ -132,7 +132,7 @@ size_t differential_serialize_for_dest(const Timestamp *ts, int dest, void *buff
                 buf[idx++] = data->v[k];       // current value
             }
         }
-        // Step 3: Update LS[dest] = local_clock
+        // Update LS[dest] = local_clock after successful serialization
         data->LS[dest] = data->local_clock;
     }
     
@@ -154,8 +154,15 @@ void differential_deserialize(Timestamp *ts, const void *buffer, size_t size) {
     DifferentialClockData *data = (DifferentialClockData*)ts->data;
     
     if (size == ts->n * sizeof(int)) {
-        // Full vector
-        memcpy(data->v, buffer, size);
+        // Full vector format - update entire vector
+        const int *full_v = (const int*)buffer;
+        for (int i = 0; i < ts->n; i++) {
+            if (full_v[i] > data->v[i]) {
+                data->v[i] = full_v[i];
+                // Update LU for changed components
+                data->LU[i] = data->local_clock;
+            }
+        }
     } else {
         // Differential format: pairs of (process_id, value)
         const int *buf = (const int*)buffer;
@@ -167,6 +174,8 @@ void differential_deserialize(Timestamp *ts, const void *buffer, size_t size) {
             if (pid >= 0 && pid < ts->n) {
                 if (value > data->v[pid]) {
                     data->v[pid] = value;
+                    // Update LU when component is updated
+                    data->LU[pid] = data->local_clock;
                 }
             }
         }
